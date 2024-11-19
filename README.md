@@ -11,7 +11,7 @@ Este proyecto está diseñado para crear dos bases de dos una de Oracle-XE y otr
 ## Setup
 
 ### Crear tablas
-Se debe de ejecutar la tabla de init.sql manualmente, ya sea mediante sqlplus o algún otro manejador de bases de datos.
+Se debe de ejecutar la tabla de CPD_Bancos.sql manualmente, ya sea mediante sqlplus o algún otro manejador de bases de datos.
 
 ### Node Modules
 
