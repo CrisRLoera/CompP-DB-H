@@ -1,0 +1,42 @@
+services:
+  # MongoDB service
+  mongo:
+    image: mongo:latest
+    container_name: mongo_db
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+
+  # Oracle XE 21 service
+  oracle:
+    image: gvenzl/oracle-xe:21-slim
+    container_name: oraclexe
+    ports:
+      - "1521:1521"
+    environment:
+      - ORACLE_PASSWORD=oracle
+    volumes:
+      - oracle-data:/opt/oracle/oradata
+
+  # Node.js middleware service
+  middleware:
+    build: ./src
+    container_name: node_middleware
+    ports:
+      - "3000:3000"
+    depends_on:
+      - mongo
+      - oracle
+    environment:
+      - MONGO_URI=mongodb://mongo:27017/mydb
+      - ORACLE_USER=system
+      - ORACLE_PASSWORD=oracle
+      - ORACLE_CONNECTION_STRING=oraclexe:1521/XE
+    volumes:
+      - ./src:/usr/src/app
+    command: "npm start"
+
+volumes:
+  mongo-data:
+  oracle-data:
