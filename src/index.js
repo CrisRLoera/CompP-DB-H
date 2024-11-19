@@ -29,124 +29,224 @@ async function connectToOracle() {
 
 connectToOracle();
 
-// MongoDB schema and model
-const ItemSchema = new mongoose.Schema({
-  name: String,
-  description: String
+// MongoDB schemas and models
+const SucursalSchema = new mongoose.Schema({
+  idsucursal: String,
+  nombresucursal: String,
+  ciudadsucursal: String,
+  activos: Number,
+  region: String
 });
 
-const Item = mongoose.model('Item', ItemSchema);
-
-// MongoDB CRUD Routes
-app.get('/items', async (req, res) => {
-  try {
-    const items = await Item.find();
-    res.json(items);
-  } catch (err) {
-    res.status(500).send('Error fetching items');
-  }
+const PrestamoSchema = new mongoose.Schema({
+  noprestamo: String,
+  idsucursal: String,
+  cantidad: Number
 });
 
+const Sucursal = mongoose.model('Sucursal', SucursalSchema);
+const Prestamo = mongoose.model('Prestamo', PrestamoSchema);
 
-// Oracle CRUD Routes
-app.get('/oracle-items', async (req, res) => {
+// Generic function to handle Oracle connections
+async function executeOracleQuery(query, params = {}, options = {}) {
+  const connection = await oracledb.getConnection();
   try {
-    const connection = await oracledb.getConnection();
-    const result = await connection.execute('SELECT * FROM ITEMS');
-    res.json(result.rows);
+    const result = await connection.execute(query, params, options);
     await connection.close();
+    return result;
   } catch (err) {
-    res.status(500).send('Error fetching items from Oracle');
+    if (connection) {
+      await connection.close();
+    }
+    throw err;
+  }
+}
+
+// CRUD Routes for Sucursal
+
+// Get all sucursales
+app.get('/sucursal', async (req, res) => {
+  try {
+    const sucursales = await Sucursal.find();
+    res.json(sucursales);
+  } catch (err) {
+    res.status(500).send('Error fetching sucursales from MongoDB');
   }
 });
 
+app.get('/oracle-sucursal', async (req, res) => {
+  try {
+    const result = await executeOracleQuery('SELECT * FROM SUCURSAL');
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).send('Error fetching sucursales from Oracle');
+  }
+});
 
-app.post('/oracle-items', async (req, res) => {
-  const { name, description } = req.body;
-  let connection;
+app.post('/sucursal', async (req, res) => {
+  const { idsucursal, nombresucursal, ciudadsucursal, activos, region } = req.body;
 
   try {
-    connection = await oracledb.getConnection();
-    
-    // Inserción en MongoDB para obtener el ID
-    const newItem = new Item({ name, description });
-    await newItem.save();
+    // Insert into MongoDB
+    const newSucursal = new Sucursal({ idsucursal, nombresucursal, ciudadsucursal, activos, region });
+    await newSucursal.save();
 
-    // Inserción en Oracle usando el ID de MongoDB
-    await connection.execute(
-      `INSERT INTO ITEMS (ID, NAME, DESCRIPTION) VALUES (:id, :name, :description)`,
-      [newItem._id.toString(), name, description], // Asegúrate de convertir el ID a string
+    // Insert into Oracle
+    await executeOracleQuery(
+      `INSERT INTO SUCURSAL (ID, IDSUCURSAL, NOMBRESUCURSAL, CIUDADSUCURSAL, ACTIVOS, REGION) VALUES (:id, :idsucursal, :nombresucursal, :ciudadsucursal, :activos, :region)`,
+      {
+        id: newSucursal._id.toString(),
+        idsucursal,
+        nombresucursal,
+        ciudadsucursal,
+        activos,
+        region
+      },
       { autoCommit: true }
     );
 
-    res.status(201).send('Item created in both Oracle and MongoDB');
-    
+    res.status(201).send('Sucursal created in both Oracle and MongoDB');
   } catch (err) {
-    console.error(err);
-    if (connection) {
-      await connection.close();
-    }
-    res.status(500).send('Error inserting item into Oracle or MongoDB');
+    res.status(500).send('Error inserting sucursal');
   }
 });
 
-// Ruta para actualizar un item en Oracle y MongoDB
-app.put('/oracle-items/:id', async (req, res) => {
+app.put('/sucursal/:id', async (req, res) => {
   const { id } = req.params;
-  const { name, description } = req.body;
-  let connection;
+  const { idsucursal, nombresucursal, ciudadsucursal, activos, region } = req.body;
 
   try {
-    connection = await oracledb.getConnection();
+    // Update in MongoDB
+    await Sucursal.findByIdAndUpdate(id, { idsucursal, nombresucursal, ciudadsucursal, activos, region });
 
-    // Actualización en Oracle
-    const updateQuery = `UPDATE ITEMS SET ${name ? 'NAME = :name,' : ''} ${description ? 'DESCRIPTION = :description' : ''} WHERE ID = :id`;
-    const params = { id };
-    if (name) params.name = name;
-    if (description) params.description = description;
+    // Update in Oracle
+    await executeOracleQuery(
+      `UPDATE SUCURSAL SET 
+        IDSUCURSAL = :idsucursal, 
+        NOMBRESUCURSAL = :nombresucursal, 
+        CIUDADSUCURSAL = :ciudadsucursal, 
+        ACTIVOS = :activos, 
+        REGION = :region 
+      WHERE ID = :id`,
+      { id, idsucursal, nombresucursal, ciudadsucursal, activos, region },
+      { autoCommit: true }
+    );
 
-    await connection.execute(updateQuery, params, { autoCommit: true });
-
-    // Actualización en MongoDB
-    await Item.findByIdAndUpdate(id, { name, description }, { new: true });
-
-    // Respuesta única
-    res.status(200).send('Item updated in both Oracle and MongoDB');
-    
+    res.status(200).send('Sucursal updated in both Oracle and MongoDB');
   } catch (err) {
-    if (connection) {
-      await connection.close();
-    }
-    res.status(500).send('Error updating item in Oracle or MongoDB');
+    res.status(500).send('Error updating sucursal');
   }
 });
 
-// Ruta para eliminar un item en Oracle y MongoDB
-app.delete('/oracle-items/:id', async (req, res) => {
+app.delete('/sucursal/:id', async (req, res) => {
   const { id } = req.params;
-  let connection;
 
   try {
-    connection = await oracledb.getConnection();
+    // Delete from MongoDB
+    await Sucursal.findByIdAndDelete(id);
 
-    // Eliminación en Oracle
-    await connection.execute(
-      `DELETE FROM ITEMS WHERE ID = :id`,
+    // Delete from Oracle
+    await executeOracleQuery(
+      `DELETE FROM SUCURSAL WHERE ID = :id`,
       { id },
       { autoCommit: true }
     );
 
-    // Eliminación en MongoDB
-    await Item.findByIdAndDelete(id);
-
-    // Respuesta única
-    res.status(200).send('Item deleted from both Oracle and MongoDB');
-    
+    res.status(200).send('Sucursal deleted from both Oracle and MongoDB');
   } catch (err) {
-    if (connection) {
-      await connection.close();
-    }
-    res.status(500).send('Error deleting item from Oracle or MongoDB');
+    res.status(500).send('Error deleting sucursal');
+  }
+});
+
+// CRUD Routes for Prestamo
+
+// Get all prestamos
+app.get('/prestamo', async (req, res) => {
+  try {
+    const prestamos = await Prestamo.find();
+    res.json(prestamos);
+  } catch (err) {
+    res.status(500).send('Error fetching prestamos from MongoDB');
+  }
+});
+
+app.get('/oracle-prestamo', async (req, res) => {
+  try {
+    const result = await executeOracleQuery('SELECT * FROM PRESTAMO');
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).send('Error fetching prestamos from Oracle');
+  }
+});
+
+app.post('/prestamo', async (req, res) => {
+  const { noprestamo, idsucursal, cantidad } = req.body;
+
+  try {
+    // Insert into MongoDB
+    const newPrestamo = new Prestamo({ noprestamo, idsucursal, cantidad });
+    await newPrestamo.save();
+
+    // Insert into Oracle
+    await executeOracleQuery(
+      `INSERT INTO PRESTAMO (ID, NOPRESTAMO, IDSUCURSAL, CANTIDAD) VALUES (:id, :noprestamo, :idsucursal, :cantidad)`,
+      {
+        id: newPrestamo._id.toString(),
+        noprestamo,
+        idsucursal,
+        cantidad
+      },
+      { autoCommit: true }
+    );
+
+    res.status(201).send('Prestamo created in both Oracle and MongoDB');
+  } catch (err) {
+    res.status(500).send('Error inserting prestamo');
+  }
+});
+
+app.put('/prestamo/:id', async (req, res) => {
+  const { id } = req.params;
+  const { noprestamo, idsucursal, cantidad } = req.body;
+
+  try {
+    // Update in MongoDB
+    await Prestamo.findByIdAndUpdate(id, { noprestamo, idsucursal, cantidad });
+
+    // Update in Oracle
+    await executeOracleQuery(
+      `UPDATE PRESTAMO SET 
+        NOPRESTAMO = :noprestamo, 
+        IDSUCURSAL = :idsucursal, 
+        CANTIDAD = :cantidad 
+      WHERE ID = :id`,
+      { id, noprestamo, idsucursal, cantidad },
+      { autoCommit: true }
+    );
+
+    res.status(200).send('Prestamo updated in both Oracle and MongoDB');
+  } catch (err) {
+    res.status(500).send('Error updating prestamo');
+  }
+});
+
+app.delete('/prestamo/:id', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    // Delete from MongoDB
+    await Prestamo.findByIdAndDelete(id);
+
+    // Delete from Oracle
+    await executeOracleQuery(
+      `DELETE FROM PRESTAMO WHERE ID = :id`,
+      { id },
+      { autoCommit: true }
+    );
+
+    res.status(200).send('Prestamo deleted from both Oracle and MongoDB');
+  } catch (err) {
+    res.status(500).send('Error deleting prestamo');
   }
 });
 
