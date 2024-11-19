@@ -10,6 +10,12 @@ Este proyecto está diseñado para crear dos bases de dos una de Oracle-XE y otr
 
 ## Setup
 
+### Clona el repositorio
+Dentro de la ruta en la que vas a colocar el repositorio usa el siguiente comando:
+```
+git clone git@github.com:CrisRLoera/CompP-DB-H.git
+```
+
 ### Crear tablas
 Se debe de ejecutar la tabla de CPD_Bancos.sql manualmente, ya sea mediante sqlplus o algún otro manejador de bases de datos.
 
@@ -23,7 +29,11 @@ npm install express mongoose oracledb
 
 ### Mongo
 
-Es importante que para que las operaciones CRUD se ejecuten correctamente, se utilice el siguiente comando dentro del bash del contenedor:
+Es importante que para que las operaciones CRUD se ejecuten correctamente, se utilice el siguiente comando dentro del bash del contenedor de mongo(mongo_db), a el cual puedes entrar mediante el siguiente comando en terminal:
+
+```
+docker exec -ti mongo_db /bin/bash
+```
 
 ```
 mongosh
