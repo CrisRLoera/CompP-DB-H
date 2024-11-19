@@ -1,3 +1,5 @@
+# Ejemplos de inserción
+
 curl -X POST http://localhost:3000/sucursal \
 -H "Content-Type: application/json" \
 -d '{"idsucursal": "S0001", "nombresucursal": "Downtown", "ciudadsucursal": "Brooklyn", "activos": 900000, "region": "A"}'
@@ -71,11 +73,12 @@ curl -X POST http://localhost:3000/prestamo \
 -H "Content-Type: application/json" \
 -d '{"noprestamo": "L-21", "idsucursal": "S0009", "cantidad": 570}'
 
-
+# Ejemplo de modificación
 
 curl -X PUT http://localhost:3000/sucursal/id \
 -H "Content-Type: application/json" \
 -d '{"nombresucursal": "New Downtown", "ciudadsucursal": "New Brooklyn", "activos": 950000, "region": "C"}'
 
+# Ejemplo de eliminación
 
 curl -X DELETE http://localhost:3000/sucursal/id

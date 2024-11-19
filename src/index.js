@@ -70,6 +70,7 @@ app.get('/sucursal', async (req, res) => {
     const sucursales = await Sucursal.find();
     res.json(sucursales);
   } catch (err) {
+    console.error(err);
     res.status(500).send('Error fetching sucursales from MongoDB');
   }
 });
@@ -85,15 +86,21 @@ app.get('/oracle-sucursal', async (req, res) => {
 
 app.post('/sucursal', async (req, res) => {
   const { idsucursal, nombresucursal, ciudadsucursal, activos, region } = req.body;
+  const session = await mongoose.startSession();
+  session.startTransaction(); // Inicia la transacción de MongoDB
+
+  let oracleConnection;
 
   try {
-    // Insert into MongoDB
+    // Inserción en MongoDB
     const newSucursal = new Sucursal({ idsucursal, nombresucursal, ciudadsucursal, activos, region });
-    await newSucursal.save();
+    await newSucursal.save({ session });
 
-    // Insert into Oracle
-    await executeOracleQuery(
-      `INSERT INTO SUCURSAL (ID, IDSUCURSAL, NOMBRESUCURSAL, CIUDADSUCURSAL, ACTIVOS, REGION) VALUES (:id, :idsucursal, :nombresucursal, :ciudadsucursal, :activos, :region)`,
+    // Inserción en Oracle
+    oracleConnection = await oracledb.getConnection();
+    await oracleConnection.execute(
+      `INSERT INTO SUCURSAL (ID, IDSUCURSAL, NOMBRESUCURSAL, CIUDADSUCURSAL, ACTIVOS, REGION) 
+      VALUES (:id, :idsucursal, :nombresucursal, :ciudadsucursal, :activos, :region)`,
       {
         id: newSucursal._id.toString(),
         idsucursal,
@@ -102,12 +109,31 @@ app.post('/sucursal', async (req, res) => {
         activos,
         region
       },
-      { autoCommit: true }
+      { autoCommit: false } // No confirmar aún
     );
+
+    // Confirma ambas transacciones
+    await session.commitTransaction();
+    await oracleConnection.commit();
 
     res.status(201).send('Sucursal created in both Oracle and MongoDB');
   } catch (err) {
+    console.error(err);
+    // Reversión de MongoDB
+    await session.abortTransaction();
+
+    // Reversión de Oracle
+    if (oracleConnection) {
+      await oracleConnection.rollback();
+    }
+
     res.status(500).send('Error inserting sucursal');
+  } finally {
+    // Finaliza la sesión y conexión
+    session.endSession();
+    if (oracleConnection) {
+      await oracleConnection.close();
+    }
   }
 });
 
@@ -115,12 +141,22 @@ app.put('/sucursal/:id', async (req, res) => {
   const { id } = req.params;
   const { idsucursal, nombresucursal, ciudadsucursal, activos, region } = req.body;
 
-  try {
-    // Update in MongoDB
-    await Sucursal.findByIdAndUpdate(id, { idsucursal, nombresucursal, ciudadsucursal, activos, region });
+  const session = await mongoose.startSession();
+  session.startTransaction(); // Inicia la transacción en MongoDB
 
-    // Update in Oracle
-    await executeOracleQuery(
+  let oracleConnection;
+
+  try {
+    // Actualización en MongoDB
+    await Sucursal.findByIdAndUpdate(
+      id,
+      { idsucursal, nombresucursal, ciudadsucursal, activos, region },
+      { session }
+    );
+
+    // Actualización en Oracle
+    oracleConnection = await oracledb.getConnection();
+    await oracleConnection.execute(
       `UPDATE SUCURSAL SET 
         IDSUCURSAL = :idsucursal, 
         NOMBRESUCURSAL = :nombresucursal, 
@@ -129,32 +165,76 @@ app.put('/sucursal/:id', async (req, res) => {
         REGION = :region 
       WHERE ID = :id`,
       { id, idsucursal, nombresucursal, ciudadsucursal, activos, region },
-      { autoCommit: true }
+      { autoCommit: false } // No confirmar aún
     );
+
+    // Confirma ambas transacciones
+    await session.commitTransaction();
+    await oracleConnection.commit();
 
     res.status(200).send('Sucursal updated in both Oracle and MongoDB');
   } catch (err) {
+    console.error(err);
+    // Reversión de MongoDB
+    await session.abortTransaction();
+
+    // Reversión de Oracle
+    if (oracleConnection) {
+      await oracleConnection.rollback();
+    }
+
     res.status(500).send('Error updating sucursal');
+  } finally {
+    // Finaliza la sesión y conexión
+    session.endSession();
+    if (oracleConnection) {
+      await oracleConnection.close();
+    }
   }
 });
 
 app.delete('/sucursal/:id', async (req, res) => {
   const { id } = req.params;
 
-  try {
-    // Delete from MongoDB
-    await Sucursal.findByIdAndDelete(id);
+  const session = await mongoose.startSession();
+  session.startTransaction(); // Inicia la transacción en MongoDB
 
-    // Delete from Oracle
-    await executeOracleQuery(
+  let oracleConnection;
+
+  try {
+    // Eliminación en MongoDB
+    await Sucursal.findByIdAndDelete(id, { session });
+
+    // Eliminación en Oracle
+    oracleConnection = await oracledb.getConnection();
+    await oracleConnection.execute(
       `DELETE FROM SUCURSAL WHERE ID = :id`,
       { id },
-      { autoCommit: true }
+      { autoCommit: false } // No confirmar aún
     );
+
+    // Confirma ambas transacciones
+    await session.commitTransaction();
+    await oracleConnection.commit();
 
     res.status(200).send('Sucursal deleted from both Oracle and MongoDB');
   } catch (err) {
+    console.error(err);
+    // Reversión de MongoDB
+    await session.abortTransaction();
+
+    // Reversión de Oracle
+    if (oracleConnection) {
+      await oracleConnection.rollback();
+    }
+
     res.status(500).send('Error deleting sucursal');
+  } finally {
+    // Finaliza la sesión y conexión
+    session.endSession();
+    if (oracleConnection) {
+      await oracleConnection.close();
+    }
   }
 });
 
@@ -166,6 +246,7 @@ app.get('/prestamo', async (req, res) => {
     const prestamos = await Prestamo.find();
     res.json(prestamos);
   } catch (err) {
+    console.error(err);
     res.status(500).send('Error fetching prestamos from MongoDB');
   }
 });
@@ -182,26 +263,49 @@ app.get('/oracle-prestamo', async (req, res) => {
 app.post('/prestamo', async (req, res) => {
   const { noprestamo, idsucursal, cantidad } = req.body;
 
-  try {
-    // Insert into MongoDB
-    const newPrestamo = new Prestamo({ noprestamo, idsucursal, cantidad });
-    await newPrestamo.save();
+  const session = await mongoose.startSession();
+  session.startTransaction(); // Inicia la transacción en MongoDB
 
-    // Insert into Oracle
-    await executeOracleQuery(
-      `INSERT INTO PRESTAMO (ID, NOPRESTAMO, IDSUCURSAL, CANTIDAD) VALUES (:id, :noprestamo, :idsucursal, :cantidad)`,
+  let oracleConnection;
+
+  try {
+    // Inserción en MongoDB
+    const newPrestamo = new Prestamo({ noprestamo, idsucursal, cantidad });
+    await newPrestamo.save({ session });
+
+    // Inserción en Oracle
+    oracleConnection = await oracledb.getConnection();
+    await oracleConnection.execute(
+      `INSERT INTO PRESTAMO (ID, NOPRESTAMO, IDSUCURSAL, CANTIDAD) 
+       VALUES (:id, :noprestamo, :idsucursal, :cantidad)`,
       {
         id: newPrestamo._id.toString(),
         noprestamo,
         idsucursal,
         cantidad
       },
-      { autoCommit: true }
+      { autoCommit: false } // No confirmar aún
     );
+
+    // Confirmar transacciones
+    await session.commitTransaction();
+    await oracleConnection.commit();
 
     res.status(201).send('Prestamo created in both Oracle and MongoDB');
   } catch (err) {
+    console.error(err);
+    // Revertir cambios si hay error
+    await session.abortTransaction();
+    if (oracleConnection) {
+      await oracleConnection.rollback();
+    }
     res.status(500).send('Error inserting prestamo');
+  } finally {
+    // Finalizar la sesión y conexión
+    session.endSession();
+    if (oracleConnection) {
+      await oracleConnection.close();
+    }
   }
 });
 
@@ -209,46 +313,95 @@ app.put('/prestamo/:id', async (req, res) => {
   const { id } = req.params;
   const { noprestamo, idsucursal, cantidad } = req.body;
 
-  try {
-    // Update in MongoDB
-    await Prestamo.findByIdAndUpdate(id, { noprestamo, idsucursal, cantidad });
+  const session = await mongoose.startSession();
+  session.startTransaction(); // Inicia la transacción en MongoDB
 
-    // Update in Oracle
-    await executeOracleQuery(
+  let oracleConnection;
+
+  try {
+    // Actualización en MongoDB
+    await Prestamo.findByIdAndUpdate(
+      id,
+      { noprestamo, idsucursal, cantidad },
+      { session }
+    );
+
+    // Actualización en Oracle
+    oracleConnection = await oracledb.getConnection();
+    await oracleConnection.execute(
       `UPDATE PRESTAMO SET 
         NOPRESTAMO = :noprestamo, 
         IDSUCURSAL = :idsucursal, 
         CANTIDAD = :cantidad 
       WHERE ID = :id`,
       { id, noprestamo, idsucursal, cantidad },
-      { autoCommit: true }
+      { autoCommit: false } // No confirmar aún
     );
+
+    // Confirmar transacciones
+    await session.commitTransaction();
+    await oracleConnection.commit();
 
     res.status(200).send('Prestamo updated in both Oracle and MongoDB');
   } catch (err) {
+    console.error(err);
+    // Revertir cambios si hay error
+    await session.abortTransaction();
+    if (oracleConnection) {
+      await oracleConnection.rollback();
+    }
     res.status(500).send('Error updating prestamo');
+  } finally {
+    // Finalizar la sesión y conexión
+    session.endSession();
+    if (oracleConnection) {
+      await oracleConnection.close();
+    }
   }
 });
 
 app.delete('/prestamo/:id', async (req, res) => {
   const { id } = req.params;
 
-  try {
-    // Delete from MongoDB
-    await Prestamo.findByIdAndDelete(id);
+  const session = await mongoose.startSession();
+  session.startTransaction(); // Inicia la transacción en MongoDB
 
-    // Delete from Oracle
-    await executeOracleQuery(
+  let oracleConnection;
+
+  try {
+    // Eliminación en MongoDB
+    await Prestamo.findByIdAndDelete(id, { session });
+
+    // Eliminación en Oracle
+    oracleConnection = await oracledb.getConnection();
+    await oracleConnection.execute(
       `DELETE FROM PRESTAMO WHERE ID = :id`,
       { id },
-      { autoCommit: true }
+      { autoCommit: false } // No confirmar aún
     );
+
+    // Confirmar transacciones
+    await session.commitTransaction();
+    await oracleConnection.commit();
 
     res.status(200).send('Prestamo deleted from both Oracle and MongoDB');
   } catch (err) {
+    console.error(err);
+    // Revertir cambios si hay error
+    await session.abortTransaction();
+    if (oracleConnection) {
+      await oracleConnection.rollback();
+    }
     res.status(500).send('Error deleting prestamo');
+  } finally {
+    // Finalizar la sesión y conexión
+    session.endSession();
+    if (oracleConnection) {
+      await oracleConnection.close();
+    }
   }
 });
+
 
 // Start server
 app.listen(port, () => {

@@ -5,6 +5,7 @@ services:
     container_name: mongo_db
     ports:
       - "27017:27017"
+    command: ["mongod", "--replSet", "rs0"]
     volumes:
       - mongo-data:/data/db
 
