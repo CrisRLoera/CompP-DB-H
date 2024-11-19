@@ -47,16 +47,6 @@ app.get('/items', async (req, res) => {
   }
 });
 
-app.post('/items', async (req, res) => {
-  const { name, description } = req.body;
-  const newItem = new Item({ name, description });
-  try {
-    await newItem.save();
-    res.status(201).send('Item created');
-  } catch (err) {
-    res.status(500).send('Error creating item');
-  }
-});
 
 // Oracle CRUD Routes
 app.get('/oracle-items', async (req, res) => {
@@ -70,19 +60,93 @@ app.get('/oracle-items', async (req, res) => {
   }
 });
 
+
 app.post('/oracle-items', async (req, res) => {
   const { name, description } = req.body;
+  let connection;
+
   try {
-    const connection = await oracledb.getConnection();
-    const result = await connection.execute(
-      `INSERT INTO ITEMS (NAME, DESCRIPTION) VALUES (:name, :description)`,
-      [name, description],
+    connection = await oracledb.getConnection();
+    
+    // Inserción en MongoDB para obtener el ID
+    const newItem = new Item({ name, description });
+    await newItem.save();
+
+    // Inserción en Oracle usando el ID de MongoDB
+    await connection.execute(
+      `INSERT INTO ITEMS (ID, NAME, DESCRIPTION) VALUES (:id, :name, :description)`,
+      [newItem._id.toString(), name, description], // Asegúrate de convertir el ID a string
       { autoCommit: true }
     );
-    res.status(201).send('Item created in Oracle');
-    await connection.close();
+
+    res.status(201).send('Item created in both Oracle and MongoDB');
+    
   } catch (err) {
-    res.status(500).send('Error inserting item into Oracle');
+    console.error(err);
+    if (connection) {
+      await connection.close();
+    }
+    res.status(500).send('Error inserting item into Oracle or MongoDB');
+  }
+});
+
+// Ruta para actualizar un item en Oracle y MongoDB
+app.put('/oracle-items/:id', async (req, res) => {
+  const { id } = req.params;
+  const { name, description } = req.body;
+  let connection;
+
+  try {
+    connection = await oracledb.getConnection();
+
+    // Actualización en Oracle
+    const updateQuery = `UPDATE ITEMS SET ${name ? 'NAME = :name,' : ''} ${description ? 'DESCRIPTION = :description' : ''} WHERE ID = :id`;
+    const params = { id };
+    if (name) params.name = name;
+    if (description) params.description = description;
+
+    await connection.execute(updateQuery, params, { autoCommit: true });
+
+    // Actualización en MongoDB
+    await Item.findByIdAndUpdate(id, { name, description }, { new: true });
+
+    // Respuesta única
+    res.status(200).send('Item updated in both Oracle and MongoDB');
+    
+  } catch (err) {
+    if (connection) {
+      await connection.close();
+    }
+    res.status(500).send('Error updating item in Oracle or MongoDB');
+  }
+});
+
+// Ruta para eliminar un item en Oracle y MongoDB
+app.delete('/oracle-items/:id', async (req, res) => {
+  const { id } = req.params;
+  let connection;
+
+  try {
+    connection = await oracledb.getConnection();
+
+    // Eliminación en Oracle
+    await connection.execute(
+      `DELETE FROM ITEMS WHERE ID = :id`,
+      { id },
+      { autoCommit: true }
+    );
+
+    // Eliminación en MongoDB
+    await Item.findByIdAndDelete(id);
+
+    // Respuesta única
+    res.status(200).send('Item deleted from both Oracle and MongoDB');
+    
+  } catch (err) {
+    if (connection) {
+      await connection.close();
+    }
+    res.status(500).send('Error deleting item from Oracle or MongoDB');
   }
 });
 
