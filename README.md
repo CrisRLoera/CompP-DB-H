@@ -51,6 +51,15 @@ docker-compose down
 docker-compose up --build
 ```
 
+De ser necesario reconfigurar para las replicas, dentro del contenedor principal (mongo_db):
+```
+rs.reconfig({  _id: "rs0",  members: [    { _id: 0, host: "mongo_db:27017" },    { _id: 1, host: "mongo_backup:27017" },  ]},{force:true});
+```
+
+```
+rs.conf();
+```
+
 
 ## Ejecución
 

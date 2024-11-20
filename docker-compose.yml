@@ -5,9 +5,16 @@ services:
     container_name: mongo_db
     ports:
       - "27017:27017"
-    command: ["mongod", "--replSet", "rs0"]
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
     volumes:
       - mongo-data:/data/db
+
+  mongo-backup:
+    image: mongo:latest
+    container_name: mongo_backup
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    volumes:
+      - mongo-backup-data:/data/db
 
   # Oracle XE 21 service
   oracle:
@@ -19,6 +26,16 @@ services:
       - ORACLE_PASSWORD=oracle
     volumes:
       - oracle-data:/opt/oracle/oradata
+  
+  oracle-backup:
+    image: gvenzl/oracle-xe:21-slim
+    container_name: oraclexe_backup
+    ports:
+      - "1522:1521"
+    environment:
+      - ORACLE_PASSWORD=oracle
+    volumes:
+      - oracle-backup:/opt/oracle/oradata
 
   # Node.js middleware service
   middleware:
@@ -41,3 +58,5 @@ services:
 volumes:
   mongo-data:
   oracle-data:
+  oracle-backup:
+  mongo-backup-data:
